@@ -13,6 +13,7 @@ import torch
 import numpy as np
 from PIL import Image
 
+from diffusers import LCMScheduler
 from diffusers.utils import load_image
 from diffusers.models import ControlNetModel
 
@@ -105,6 +106,7 @@ class Predictor(BasePredictor):
         )
 
         base_model_path = "stabilityai/stable-diffusion-xl-base-1.0"
+        lcm_lora_id = "latent-consistency/lcm-lora-sdxl"
         self.pipe = StableDiffusionXLInstantIDPipeline.from_pretrained(
             base_model_path,
             controlnet=self.controlnet,
@@ -112,6 +114,9 @@ class Predictor(BasePredictor):
             cache_dir=CHECKPOINTS_CACHE,
             local_files_only=True,
         )
+        self.pipe.load_lora_weights(lcm_lora_id)
+        self.pipe.fuse_lora()
+        self.pipe.scheduler = LCMScheduler.from_config(self.pipe.scheduler.config)
         self.pipe.cuda()
         self.pipe.load_ip_adapter_instantid(face_adapter)
 
@@ -152,15 +157,15 @@ class Predictor(BasePredictor):
         ),
         num_inference_steps: int = Input(
             description="Number of denoising steps",
-            default=30,
+            default=10,
             ge=1,
             le=500,
         ),
         guidance_scale: float = Input(
-            description="Scale for classifier-free guidance",
-            default=5,
-            ge=1,
-            le=50,
+            description="Scale for classifier-free guidance(0 - 1 for LCM)",
+            default=0,
+            ge=0,
+            le=1,
         ),
     ) -> Path:
         """Run a single prediction on the model"""
